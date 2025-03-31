@@ -1,0 +1,61 @@
+rm -rf limine
+git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1
+make -C limine \
+	CC="cc" \
+	CFLAGS="-g -O2 -pipe" \
+	CPPFLAGS="" \
+	LDFLAGS="" \
+	LIBS=""
+make[1]: Entering directory '/home/landon/projects/os/limine'
+cc -g -O2 -pipe -Wall -Wextra    -std=c99 limine.c  -o limine
+make[1]: Leaving directory '/home/landon/projects/os/limine'
+./kernel/get-deps
+touch kernel-deps
+make -C kernel
+make[1]: Entering directory '/home/landon/projects/os/kernel'
+mkdir -p "$(dirname obj/console.c.o)"
+clang -target x86_64-unknown-none -g -O2 -pipe -Wall -Wextra -Weverything -std=gnu11 -nostdinc -ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC -ffunction-sections -fdata-sections -m64 -march=x86-64 -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -I src -isystem freestnd-c-hdrs  -DLIMINE_API_REVISION=3 -MMD -MP -c src/console.c -o obj/console.c.o
+mkdir -p "$(dirname obj/main.c.o)"
+clang -target x86_64-unknown-none -g -O2 -pipe -Wall -Wextra -Weverything -std=gnu11 -nostdinc -ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC -ffunction-sections -fdata-sections -m64 -march=x86-64 -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -I src -isystem freestnd-c-hdrs  -DLIMINE_API_REVISION=3 -MMD -MP -c src/main.c -o obj/main.c.o
+rm -rf cc-runtime-x86_64
+cp -r cc-runtime cc-runtime-x86_64
+make -C cc-runtime-x86_64 -f cc-runtime.mk \
+	CC="clang -target x86_64-unknown-none" \
+	AR="ar" \
+	CFLAGS="-g -O2 -pipe -Wall -Wextra -Weverything -std=gnu11 -nostdinc -ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC -ffunction-sections -fdata-sections -m64 -march=x86-64 -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel" \
+	CPPFLAGS='-isystem ../freestnd-c-hdrs -DCC_RUNTIME_NO_FLOAT'
+make[2]: Entering directory '/home/landon/projects/os/kernel/cc-runtime-x86_64'
+Building cc-runtime.a...
+-rw-r--r--. 1 landon landon 363708 Mar 30 20:23 cc-runtime.a
+Done.
+make[2]: Leaving directory '/home/landon/projects/os/kernel/cc-runtime-x86_64'
+mkdir -p "$(dirname bin/kernel)"
+clang -target x86_64-unknown-none -g -O2 -pipe -Wall -Wextra -Weverything -std=gnu11 -nostdinc -ffreestanding -fno-stack-protector -fno-stack-check -fno-PIC -ffunction-sections -fdata-sections -m64 -march=x86-64 -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -Wl,-m,elf_x86_64 -Wl,--build-id=none -nostdlib -static -z max-page-size=0x1000 -Wl,--gc-sections -T linker.ld obj/console.c.o obj/main.c.o cc-runtime-x86_64/cc-runtime.a -o bin/kernel
+make[1]: Leaving directory '/home/landon/projects/os/kernel'
+rm -rf iso_root
+mkdir -p iso_root/boot
+cp -v kernel/bin/kernel iso_root/boot/
+'kernel/bin/kernel' -> 'iso_root/boot/kernel'
+mkdir -p iso_root/boot/limine
+cp -v limine.conf limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
+'limine.conf' -> 'iso_root/boot/limine/limine.conf'
+'limine/limine-bios.sys' -> 'iso_root/boot/limine/limine-bios.sys'
+'limine/limine-bios-cd.bin' -> 'iso_root/boot/limine/limine-bios-cd.bin'
+'limine/limine-uefi-cd.bin' -> 'iso_root/boot/limine/limine-uefi-cd.bin'
+mkdir -p iso_root/EFI/BOOT
+cp -v limine/BOOTX64.EFI iso_root/EFI/BOOT/
+'limine/BOOTX64.EFI' -> 'iso_root/EFI/BOOT/BOOTX64.EFI'
+cp -v limine/BOOTIA32.EFI iso_root/EFI/BOOT/
+'limine/BOOTIA32.EFI' -> 'iso_root/EFI/BOOT/BOOTIA32.EFI'
+xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
+	-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
+	-apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
+	-efi-boot-part --efi-boot-image --protective-msdos-label \
+	iso_root -o template.iso
+./limine/limine bios-install template.iso
+rm -rf iso_root
+qemu-system-x86_64 \
+	-M q35 \
+	-cdrom template.iso \
+	-boot d \
+	-m 2G
